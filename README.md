@@ -119,7 +119,7 @@ node src/index.js --type sets --mode diff
 
 | バッチ | 差分の対象 |
 |--------|------------|
-| **sets** | DB に未登録のセット（api_set_id が存在しないもの） |
+| **sets** | DB に未登録のセット（tcg_player_id が存在しないもの） |
 | **cards** | カードが 0 件、または card_count より少ないセット |
 | **prices** | card_prices（本日）・card_price_history・card_ebay_prices・card_ebay_price_history のいずれかに未保存のカード |
 | **sealed** | 本日の sealed_product_price_history に未登録の商品 |

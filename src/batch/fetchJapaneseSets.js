@@ -39,8 +39,8 @@ function mapSetToDb(set) {
 }
 
 /**
- * 日本語セット一覧を取得して Supabase に保存（upsert: api_set_id + language 基準）
- * api_set_id が API 上の唯一の真実。tcg_player_id は将来変更・衝突の可能性があるため upsert 基準にしない。
+ * 日本語セット一覧を取得して Supabase に保存（upsert: tcg_player_id + language 基準）
+ * tcg_player_id は TCGPlayer の安定した識別子。差分時は DB に存在しない tcg_player_id のみ保存。
  * 毎日 or 週1 で実行でOK
  * @param {Object} options - maxSets, mode: 'full' | 'diff'
  */
@@ -70,14 +70,14 @@ export async function fetchJapaneseSets(options = {}) {
       .filter((r) => r.api_set_id != null && r.tcg_player_id);
 
     if (mode === 'diff' && records.length > 0) {
-      const apiSetIds = [...new Set(records.map((r) => r.api_set_id))];
+      const tcgPlayerIds = [...new Set(records.map((r) => r.tcg_player_id).filter(Boolean))];
       const { data: existing } = await supabase
         .from('sets')
-        .select('api_set_id')
+        .select('tcg_player_id')
         .eq('language', LANGUAGE)
-        .in('api_set_id', apiSetIds);
-      const existingIds = new Set((existing ?? []).map((r) => r.api_set_id));
-      records = records.filter((r) => !existingIds.has(r.api_set_id));
+        .in('tcg_player_id', tcgPlayerIds);
+      const existingTcgIds = new Set((existing ?? []).map((r) => r.tcg_player_id).filter(Boolean));
+      records = records.filter((r) => !existingTcgIds.has(r.tcg_player_id));
       if (records.length === 0) {
         log(`セット ${offset + 1}-${offset + sets.length} 件は全て既存のためスキップ`);
         if (sets.length < limit) break;
@@ -92,7 +92,7 @@ export async function fetchJapaneseSets(options = {}) {
     }
 
     const { error } = await supabase.from('sets').upsert(records, {
-      onConflict: ['api_set_id', 'language'],
+      onConflict: ['tcg_player_id', 'language'],
       ignoreDuplicates: false,
     });
 
