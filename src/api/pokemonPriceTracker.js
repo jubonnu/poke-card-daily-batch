@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import { config } from '../config.js';
 
 const BASE_URL = config.api.baseUrl;
+const TRACKER_BASE = config.api.trackerBaseUrl;
 const API_KEY = config.api.apiKey;
 const MAX_RETRIES = config.api.maxRetries ?? 3;
 const RETRY_DELAY_MS = config.api.retryDelayMs ?? 5000;
@@ -52,6 +53,52 @@ async function request(endpoint, options = {}) {
     return data;
   };
 
+  const RATE_LIMIT_WAIT_MS = 65_000;
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await doRequest();
+    } catch (err) {
+      lastError = err;
+      if (attempt === MAX_RETRIES || !isRetryable(err)) throw err;
+
+      const delayMs = err.status === 429
+        ? RATE_LIMIT_WAIT_MS
+        : RETRY_DELAY_MS * Math.pow(2, attempt);
+      console.warn(
+        `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${endpoint}`
+      );
+      await wait(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
+/** 絶対URLでリクエスト（tracker 等の別ベース用） */
+async function requestAbsolute(fullUrl, options = {}) {
+  const doRequest = async () => {
+    const response = await fetch(fullUrl, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const error = new Error(data.message || `API Error: ${response.status}`);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  };
+
   let lastError;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -61,9 +108,6 @@ async function request(endpoint, options = {}) {
       if (attempt === MAX_RETRIES || !isRetryable(err)) throw err;
 
       const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.warn(
-        `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${endpoint}`
-      );
       await wait(delayMs);
     }
   }
@@ -117,7 +161,7 @@ export async function getSets(params = {}) {
 export async function getCards(params = {}) {
   const searchParams = new URLSearchParams(
     toQueryParams({
-      language: params.language || config.api.language,
+      ...(params.omitLanguage ? {} : { language: params.language || config.api.language }),
       tcgPlayerId: params.tcgPlayerId,
       cardId: params.cardId,
       setId: params.setId,
@@ -129,7 +173,9 @@ export async function getCards(params = {}) {
       sortOrder: params.sortOrder || 'asc',
       includeHistory: params.includeHistory ?? config.batch.includeHistory,
       includeEbay: params.includeEbay ?? false,
+      includeBoth: params.includeBoth,
       days: params.days ?? 30,
+      maxDataPoints: params.maxDataPoints,
       fetchAllInSet: params.fetchAllInSet ?? false,
     })
   );
@@ -171,6 +217,22 @@ export async function getCardByTcgPlayerId(tcgPlayerId) {
 }
 
 /**
+ * 特定カードを TCGPlayer ID で取得（eBay/PSA データ含む：現在価格＋価格履歴）
+ * GET /cards?tcgPlayerId=...&includeEbay=true で data.ebay.salesByGrade / data.ebay.priceHistory を取得
+ * @param {string} tcgPlayerId - TCGPlayer ID（cards.tcg_player_id）
+ * @param {Object} options - language, days
+ */
+export async function getCardWithEbay(tcgPlayerId, options = {}) {
+  return getCards({
+    language: options.language || config.api.language,
+    tcgPlayerId,
+    includeEbay: true,
+    limit: 1,
+    days: options.days ?? 30,
+  });
+}
+
+/**
  * シールド商品を取得（パック・ボックス・ETB等）
  * @param {Object} params - クエリパラメータ
  */
@@ -195,6 +257,36 @@ export async function getSealedProducts(params = {}) {
   );
 
   return request(`/sealed-products?${searchParams.toString()}`);
+}
+
+/**
+ * ③ 価格・履歴バッチ用: カードの現在価格を取得
+ * GET /api/v2/cards/{cardId}/prices
+ * @param {string} cardId - APIのカードID（cards.api_card_id）
+ */
+export async function getCardPrices(cardId) {
+  return request(`/cards/${encodeURIComponent(cardId)}/prices`);
+}
+
+/**
+ * ③ 価格履歴用: カードの価格履歴を取得（プラン制限あり・6ヶ月等）
+ * GET /api/tracker/history/{cardId}?days=180
+ * @param {string} cardId - APIのカードID（cards.api_card_id）
+ * @param {Object} options - days（履歴の日数、デフォルト180）
+ */
+export async function getCardHistory(cardId, options = {}) {
+  const days = options.days ?? 180;
+  const url = `${TRACKER_BASE}/history/${encodeURIComponent(cardId)}?days=${days}`;
+  return requestAbsolute(url);
+}
+
+/**
+ * ③ PSA価格用: カードのPSA価格を取得
+ * GET /api/v2/psa/{cardId}
+ * @param {string} cardId - APIのカードID（cards.api_card_id）
+ */
+export async function getPsaPrices(cardId) {
+  return request(`/psa/${encodeURIComponent(cardId)}`);
 }
 
 export { sleep };

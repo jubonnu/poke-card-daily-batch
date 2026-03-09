@@ -2,6 +2,7 @@ import { getCards, getCardsBySet, sleep } from '../api/pokemonPriceTracker.js';
 import { supabase } from '../db/supabase.js';
 import { config } from '../config.js';
 import { usdToJpy } from '../utils/currency.js';
+import { parseSetName } from '../utils/setName.js';
 import { getCheckpoint, saveCheckpoint, clearCheckpoint } from './checkpoint.js';
 
 const jpyRate = () => config.batch.usdJpyRate;
@@ -10,10 +11,12 @@ const jpyRate = () => config.batch.usdJpyRate;
  * API のカードデータを DB 用に変換
  */
 function mapCardToDb(card) {
+  const { set_code, set_name } = parseSetName(card.setName);
   return {
     tcg_player_id: String(card.tcgPlayerId ?? card.id),
     set_tcg_player_id: card.setId ?? null,
-    set_name: card.setName ?? null,
+    set_code,
+    set_name,
     name: card.name,
     card_number: card.cardNumber ?? null,
     total_set_number: card.totalSetNumber ?? null,
@@ -314,6 +317,133 @@ export async function fetchAndStoreCardsBySet(setId) {
 }
 
 /**
+ * 言語指定でカードを「cards 起点」で取得して Supabase に保存（setId は使わない）
+ * 日本語は GET /cards?language=japanese で取得し、レスポンスの card.setId を set_tcg_player_id に保存。
+ * sets との紐づけは後から JOIN（cards.set_tcg_player_id = sets.tcg_player_id）。紐づかないセットもあり得る。
+ * @param {string} language - 例: 'japanese'
+ * @param {Object} options - startOffset, checkpointKey, fullRun
+ */
+export async function fetchAndStoreCardsByLanguage(language, options = {}) {
+  const { startOffset = 0, checkpointKey = 'cards_japanese', fullRun = false } = options;
+  const includeEbay = config.batch.includeEbay;
+  const limit = includeEbay ? 50 : config.batch.includeHistory ? 100 : 200;
+
+  let totalCardsStored = 0;
+  let totalPricesStored = 0;
+  let totalHistoryStored = 0;
+  let totalEbayPricesStored = 0;
+  let totalEbayHistoryStored = 0;
+  let offset = fullRun ? 0 : startOffset;
+
+  while (true) {
+    const response = await getCards({
+      language,
+      limit,
+      offset,
+      includeHistory: true,
+      includeEbay,
+      days: 30,
+    });
+    const cards = normalizeCards(response.data);
+
+    if (cards.length === 0) {
+      if (options.onComplete) options.onComplete();
+      break;
+    }
+
+    const cardRecords = cards.map(mapCardToDb);
+
+    const { error: cardsError } = await supabase.from('cards').upsert(cardRecords, {
+      onConflict: 'tcg_player_id',
+      ignoreDuplicates: false,
+    });
+
+    if (cardsError) {
+      throw new Error(`カードの保存に失敗: ${cardsError.message}`);
+    }
+
+    const priceDate = new Date().toISOString().split('T')[0];
+    const priceRecords = cards
+      .filter((c) => c.prices && (c.prices.market != null || c.prices.low != null))
+      .map((c) => mapPriceToDb(c, priceDate));
+
+    let pricesStored = 0;
+    if (priceRecords.length > 0) {
+      const { error: pricesError } = await supabase.from('card_prices').upsert(priceRecords, {
+        onConflict: 'card_tcg_player_id,price_date',
+        ignoreDuplicates: false,
+      });
+      if (!pricesError) pricesStored = priceRecords.length;
+    }
+
+    let historyStored = 0;
+    const allHistoryRecords = cards.flatMap(extractPriceHistoryRecords);
+    if (allHistoryRecords.length > 0) {
+      const { error: historyError } = await supabase
+        .from('card_price_history')
+        .upsert(allHistoryRecords, {
+          onConflict: 'card_tcg_player_id,price_date,condition_name,printing_variant',
+          ignoreDuplicates: false,
+        });
+      if (!historyError) historyStored = allHistoryRecords.length;
+    }
+
+    let ebayPricesStored = 0;
+    let ebayHistoryStored = 0;
+    const allEbayRecords = cards.flatMap(extractEbayPricesRecords);
+    if (allEbayRecords.length > 0) {
+      const { error: ebayError } = await supabase
+        .from('card_ebay_prices')
+        .upsert(allEbayRecords, {
+          onConflict: 'card_tcg_player_id,grade_key',
+          ignoreDuplicates: false,
+        });
+      if (!ebayError) ebayPricesStored = allEbayRecords.length;
+    }
+
+    const allEbayHistoryRecords = cards.flatMap(extractEbayPriceHistoryRecords);
+    if (allEbayHistoryRecords.length > 0) {
+      const { error: ebayHistoryError } = await supabase
+        .from('card_ebay_price_history')
+        .upsert(allEbayHistoryRecords, {
+          onConflict: 'card_tcg_player_id,grade_key,price_date',
+          ignoreDuplicates: false,
+        });
+      if (!ebayHistoryError) ebayHistoryStored = allEbayHistoryRecords.length;
+    }
+
+    totalCardsStored += cardRecords.length;
+    totalPricesStored += pricesStored;
+    totalHistoryStored += historyStored;
+    totalEbayPricesStored += ebayPricesStored;
+    totalEbayHistoryStored += ebayHistoryStored;
+
+    if (options.onPageDone) {
+      options.onPageDone(offset + cards.length);
+    }
+
+    if (cards.length < limit) {
+      if (options.onComplete) options.onComplete();
+      break;
+    }
+    offset += limit;
+    await sleep(config.batch.delayBetweenRequests);
+  }
+
+  if (totalCardsStored === 0 && options.onComplete) {
+    options.onComplete();
+  }
+
+  return {
+    cardsStored: totalCardsStored,
+    pricesStored: totalPricesStored,
+    historyStored: totalHistoryStored,
+    ebayPricesStored: totalEbayPricesStored,
+    ebayHistoryStored: totalEbayHistoryStored,
+  };
+}
+
+/**
  * 検索クエリでカードを取得して Supabase に保存
  * @param {string} search - 検索キーワード
  * @param {number} limit - 取得上限
@@ -377,7 +507,9 @@ async function getSetsFromDb(limit = 0) {
 
 /**
  * フルバッチ: 全セット（または直近Nセット）のカードを一括取得
- * maxSets=0 のときはDBの全セットを対象
+ * API は「少なくとも1つのフィルタ必須」のため、setId で set 単位に取得（日本語・英語とも同じフロー）。
+ * 取得時の言語は POKEMON_API_LANGUAGE（デフォルト japanese）。レスポンスの card.setId を set_tcg_player_id に保存。
+ * maxSets=0 のときはDBの全セットを対象。
  * 途中終了した場合はチェックポイントから続きを実行。BATCH_FULL_RUN=true で先頭から実行。
  */
 export async function runCardsBatch(options = {}) {
@@ -392,6 +524,9 @@ export async function runCardsBatch(options = {}) {
     console.log('[cards] セットが存在しません。先に sets バッチを実行してください。');
     return { cardsStored: 0, pricesStored: 0, historyStored: 0, ebayPricesStored: 0, ebayHistoryStored: 0, creditsUsed: 0 };
   }
+
+  const language = config.api.language || 'japanese';
+  console.log(`[cards] カード取得開始: language=${language} (set 単位)`);
 
   let startIndex = 0;
   if (!fullRun) {

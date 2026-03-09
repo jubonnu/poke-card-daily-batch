@@ -8,8 +8,14 @@
     "batch": "node src/index.js",
     "batch:sets": "node src/index.js --type sets",
     "batch:cards": "node src/index.js --type cards",
+    "batch:prices": "node src/index.js --type prices",
     "batch:sealed": "node src/index.js --type sealed",
     "batch:full": "node src/index.js --type full",
+    "batch:sets:diff": "node src/index.js --type sets --mode diff",
+    "batch:cards:diff": "node src/index.js --type cards --mode diff",
+    "batch:prices:diff": "node src/index.js --type prices --mode diff",
+    "batch:sealed:diff": "node src/index.js --type sealed --mode diff",
+    "batch:diff": "node src/index.js --type diff",
     "db:migrate": "supabase db push"
   },
   "keywords": [

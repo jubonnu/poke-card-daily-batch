@@ -3,8 +3,8 @@ import { supabase } from '../db/supabase.js';
 const TABLE = 'batch_checkpoints';
 
 /**
- * 最後に成功したセットIDを取得
- * @param {string} batchType - 'cards' | 'sealed'
+ * 最後に成功したセットID（またはカードID・インデックス）を取得
+ * @param {string} batchType - 'cards' | 'sealed' | 'prices'
  * @returns {Promise<string | null>}
  */
 export async function getCheckpoint(batchType) {
@@ -22,9 +22,9 @@ export async function getCheckpoint(batchType) {
 }
 
 /**
- * チェックポイントを保存（このセットまで処理済み）
- * @param {string} batchType - 'cards' | 'sealed'
- * @param {string} lastSetTcgPlayerId
+ * チェックポイントを保存（このセット/カードまで処理済み）
+ * @param {string} batchType - 'cards' | 'sealed' | 'prices'
+ * @param {string} lastSetTcgPlayerId - 最後に処理したセットID・カードID・インデックス
  */
 export async function saveCheckpoint(batchType, lastSetTcgPlayerId) {
   const { error } = await supabase.from(TABLE).upsert(
@@ -43,7 +43,7 @@ export async function saveCheckpoint(batchType, lastSetTcgPlayerId) {
 
 /**
  * チェックポイントをクリア（次回は先頭から実行）
- * @param {string} batchType - 'cards' | 'sealed'
+ * @param {string} batchType - 'cards' | 'sealed' | 'prices'
  */
 export async function clearCheckpoint(batchType) {
   const { error } = await supabase.from(TABLE).delete().eq('batch_type', batchType);

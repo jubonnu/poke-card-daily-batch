@@ -9,8 +9,13 @@ async function main() {
     ? args[typeIndex + 1]
     : 'full';
 
+  const modeIndex = args.indexOf('--mode');
+  const mode = modeIndex >= 0 && args[modeIndex + 1]
+    ? args[modeIndex + 1]
+    : undefined;
+
   try {
-    await runBatch(type);
+    await runBatch(type, { mode });
   } catch (err) {
     console.error(err);
     process.exit(1);
