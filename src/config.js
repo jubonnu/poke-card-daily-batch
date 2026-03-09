@@ -52,8 +52,8 @@ export const config = {
             process.env.BATCH_DELAY_MS || "2000",
             10,
         ),
-        /** USD→JPY 為替レート（バッチ保存時の円換算に使用。未設定時は 150） */
-        usdJpyRate: parseFloat(process.env.USD_JPY_RATE || "150", 10) || 150,
+        /** USD→JPY 為替レート（バッチ保存時の円換算に使用。未設定時は 200） */
+        usdJpyRate: parseFloat(process.env.USD_JPY_RATE || "200", 10) || 200,
         /** true のときチェックポイントを無視し先頭から実行（未設定時は続きから再開） */
         fullRun: process.env.BATCH_FULL_RUN === "true",
         /** 'diff' のとき差分のみ取得（cards: カード未登録セットのみ, prices: 本日価格未登録カードのみ）。未設定時は 'full' */

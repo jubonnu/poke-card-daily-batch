@@ -103,7 +103,8 @@ async function runPricesBatch(options = {}) {
  * シールド商品のみバッチ
  */
 async function runSealedBatch(options = {}) {
-  console.log('[batch] シールド商品取得を開始');
+  const runId = crypto.randomUUID();
+  log(`シールド商品取得を開始 (run: ${runId})`);
 
   try {
     const { productsStored, historyStored, creditsUsed } = await runSealedProductsBatch(options);
@@ -111,10 +112,10 @@ async function runSealedBatch(options = {}) {
       creditsUsed,
       metadata: { productsStored, historyStored },
     });
-    console.log(`[batch] 完了: 商品 ${productsStored} 件, 価格履歴 ${historyStored} 件`);
+    log(`完了: 商品 ${productsStored} 件, 価格履歴 ${historyStored} 件`);
     return { success: true, productsStored, historyStored, creditsUsed };
   } catch (err) {
-    console.error('[batch] シールド商品取得エラー:', err.message);
+    logError(`シールド商品取得エラー: ${err.message}`);
     await logBatchRun('sealed', 'failed', { errorMessage: err.message });
     throw err;
   }

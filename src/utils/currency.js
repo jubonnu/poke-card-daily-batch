@@ -1,7 +1,7 @@
 /**
  * USD → JPY 換算（バッチ保存時に使用）
  * @param {number | null | undefined} usd - USD 価格
- * @param {number} rate - USD/JPY レート（例: 150）
+ * @param {number} rate - USD/JPY レート（例: 200）
  * @returns {number | null} 円換算後の整数、null の場合は null
  */
 export function usdToJpy(usd, rate) {

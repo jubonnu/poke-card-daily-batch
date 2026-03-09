@@ -10,8 +10,7 @@ import { config } from "../config.js";
 import { getUsdJpyRate, usdToJpy } from "./exchangeRate.js";
 import { getCheckpoint, saveCheckpoint, clearCheckpoint } from "./checkpoint.js";
 import { log, error as logError } from "./utils/logger.js";
-
-const PRICE_DATE = new Date().toISOString().split("T")[0];
+import { getTodayDateString } from "../utils/date.js";
 
 /** グレードキー（psa10, cgc9.5 等）から grader と grade_value を抽出 */
 function parseGradeKey(gradeKey) {
@@ -55,7 +54,7 @@ async function getCardsForPrices(limit = 0, mode = "full") {
 
     // diff: card_prices, card_price_history, card_ebay_prices, card_ebay_price_history の
     // いずれかに未保存（日付/データがない）のカードのみ取得
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayDateString();
 
     const [
         { data: hasCardPricesToday },
@@ -135,8 +134,9 @@ function flattenPriceHistory(priceHistory) {
 
 /**
  * ③-1 現在価格を保存
+ * @param {string} [priceDate] - 保存する日付（未指定時は本日）。バッチ全体で統一するため呼び出し元で指定推奨
  */
-async function saveCardPrices(card, pricesData, rate) {
+async function saveCardPrices(card, pricesData, rate, priceDate) {
     const data = pricesData?.data ?? pricesData ?? {};
     const market = data.market ?? data.marketPrice ?? data.market_price;
     const low = data.low ?? data.lowPrice ?? data.low_price;
@@ -155,7 +155,7 @@ async function saveCardPrices(card, pricesData, rate) {
         primary_condition:
             data.primaryCondition ?? data.primary_condition ?? null,
         primary_printing: data.primaryPrinting ?? data.primary_printing ?? null,
-        price_date: PRICE_DATE,
+        price_date: priceDate ?? getTodayDateString(),
         last_updated_at: data.lastUpdated ?? data.last_updated_at ?? null,
     };
 
@@ -231,17 +231,14 @@ async function savePsaPrices(card, psaData, rate) {
     for (const [gradeKey, data] of Object.entries(byGrade)) {
         if (!data || (data.averagePrice == null && data.medianPrice == null))
             continue;
+        const { grader, grade_value } = parseGradeKey(gradeKey);
         const avg = data.averagePrice ?? data.medianPrice ?? data.average_price;
         records.push({
             card_tcg_player_id: card.tcg_player_id,
             tcg_player_id: card.tcg_player_id,
             grade_key: String(gradeKey).toLowerCase(),
-            grader:
-                String(gradeKey)
-                    .replace(/[0-9.]/g, "")
-                    .slice(0, 3)
-                    .toUpperCase() || "PSA",
-            grade_value: String(gradeKey).replace(/^[a-z]+/i, "") || "",
+            grader,
+            grade_value,
             average_price: avg ?? null,
             median_price: data.medianPrice ?? data.median_price ?? null,
             average_price_jpy: usdToJpy(avg, rate),
@@ -319,6 +316,7 @@ export async function fetchJapanesePrices(options = {}) {
     const fullRun = config.batch.fullRun;
 
     const rate = await getUsdJpyRate();
+    const priceDate = getTodayDateString();
     log(`為替レート: 1 USD = ${rate} JPY`);
     if (mode === "diff") log("差分モード: 本日価格未登録のカードのみ取得します。");
 
@@ -397,7 +395,7 @@ export async function fetchJapanesePrices(options = {}) {
                 res?.ebay ??
                 res?.ebayData;
 
-            const p = await saveCardPrices(card, cardData.prices ?? {}, rate);
+            const p = await saveCardPrices(card, cardData.prices ?? {}, rate, priceDate);
             pricesStored += p;
 
             if (includeHistory && priceHistory) {

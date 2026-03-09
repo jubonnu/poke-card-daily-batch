@@ -8,6 +8,7 @@ import { supabase } from '../db/supabase.js';
 import { config } from '../config.js';
 import { log } from './utils/logger.js';
 import { extractSetCode, normalizeSeriesKey } from '../utils/setNormalize.js';
+import { toArray } from '../utils/array.js';
 
 const LANGUAGE = 'japanese';
 
@@ -61,8 +62,7 @@ export async function fetchJapaneseSets(options = {}) {
       sortOrder: 'desc',
     });
 
-    const raw = response.data ?? response;
-    const sets = Array.isArray(raw) ? raw : [raw];
+    const sets = toArray(response.data ?? response);
     if (!sets.length) break;
 
     let records = sets

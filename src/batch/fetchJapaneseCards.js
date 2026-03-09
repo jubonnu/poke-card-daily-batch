@@ -7,6 +7,7 @@ import { getCards, sleep } from "../api/pokemonPriceTracker.js";
 import { supabase } from "../db/supabase.js";
 import { config } from "../config.js";
 import { parseSetName } from "../utils/setName.js";
+import { toArray } from "../utils/array.js";
 import {
     getCheckpoint,
     saveCheckpoint,
@@ -15,11 +16,6 @@ import {
 import { log } from "./utils/logger.js";
 
 const LANGUAGE = "japanese";
-
-function normalizeCards(data) {
-    if (!data) return [];
-    return Array.isArray(data) ? data : [data];
-}
 
 function toNum(value) {
     if (value == null) return null;
@@ -85,7 +81,7 @@ async function fetchAndStoreCardsForSet(set, options = {}) {
             days: 30,
         });
 
-        const cards = normalizeCards(response.data);
+        const cards = toArray(response.data);
         if (cards.length === 0) break;
 
         const records = cards

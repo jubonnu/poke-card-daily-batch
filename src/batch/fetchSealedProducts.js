@@ -3,16 +3,14 @@ import { supabase } from "../db/supabase.js";
 import { config } from "../config.js";
 import { usdToJpy } from "../utils/currency.js";
 import { parseSetName } from "../utils/setName.js";
+import { toArray } from "../utils/array.js";
+import { getTodayDateString } from "../utils/date.js";
 import {
     getCheckpoint,
     saveCheckpoint,
     clearCheckpoint,
 } from "./checkpoint.js";
-
-function normalizeProducts(data) {
-    if (!data) return [];
-    return Array.isArray(data) ? data : [data];
-}
+import { log } from "./utils/logger.js";
 
 const SEALED_PRODUCTS_PAGE_LIMIT = 100;
 const SEALED_DELAY_BETWEEN_TERMS_MS = 65_000;
@@ -30,25 +28,13 @@ const SEARCH_TERMS = [
  * 検索ワードでシールド商品を取得して保存（ページネーション対応）
  * BOX・パック情報と価格・価格履歴を取得
  * @param {string} searchTerm - 検索ワード
- * @param {Object} options - mode: 'full' | 'diff'。diff のときは本日価格履歴未登録の商品のみ保存
+ * @param {Object} options - mode: 'full' | 'diff'。idsWithTodayPrice: diff 時のみ使用（本日価格履歴ありの商品ID）
  */
 async function fetchAndStoreSealedProductsBySearch(searchTerm, options = {}) {
-    const { mode = "full" } = options;
+    const { mode = "full", idsWithTodayPrice = new Set() } = options;
     let totalProductsStored = 0;
     let totalHistoryStored = 0;
     let offset = 0;
-
-    let idsWithTodayPrice = new Set();
-    if (mode === "diff") {
-        const today = new Date().toISOString().split("T")[0];
-        const { data } = await supabase
-            .from("sealed_product_price_history")
-            .select("product_tcg_player_id")
-            .eq("price_date", today);
-        idsWithTodayPrice = new Set(
-            (data ?? []).map((r) => r.product_tcg_player_id).filter(Boolean),
-        );
-    }
 
     while (true) {
         const params = {
@@ -61,7 +47,7 @@ async function fetchAndStoreSealedProductsBySearch(searchTerm, options = {}) {
         if (searchTerm.trim()) params.search = searchTerm;
         const response = await getSealedProducts(params);
 
-        const products = normalizeProducts(response.data);
+        const products = toArray(response.data);
         if (products.length === 0) break;
 
         let productsToSave = products;
@@ -181,7 +167,7 @@ export async function runSealedProductsBatch(options = {}) {
             ) {
                 startIndex = idx + 1;
                 const prevTerm = SEARCH_TERMS[idx] || "(全件)";
-                console.log(
+                log(
                     `[sealed] 続きから再開: ${startIndex + 1}/${
                         SEARCH_TERMS.length
                     } 検索ワード目 (前回: "${prevTerm}")`,
@@ -197,26 +183,38 @@ export async function runSealedProductsBatch(options = {}) {
     let totalHistory = 0;
     let creditsUsed = 0;
 
+    let idsWithTodayPrice = new Set();
     if (mode === "diff") {
-        console.log("[sealed] 差分モード: 本日価格履歴未登録の商品のみ保存します。");
+        log("[sealed] 差分モード: 本日価格履歴未登録の商品のみ保存します。");
+        const today = getTodayDateString();
+        const { data } = await supabase
+            .from("sealed_product_price_history")
+            .select("product_tcg_player_id")
+            .eq("price_date", today);
+        idsWithTodayPrice = new Set(
+            (data ?? []).map((r) => r.product_tcg_player_id).filter(Boolean),
+        );
     }
 
     for (let i = 0; i < termsToProcess.length; i++) {
         const searchTerm = termsToProcess[i];
         const globalIndex = startIndex + i;
-        console.log(`[sealed] 検索中: "${searchTerm || "(全件)"}"`);
+        log(`[sealed] 検索中: "${searchTerm || "(全件)"}"`);
         const { productsStored, historyStored } =
-            await fetchAndStoreSealedProductsBySearch(searchTerm, { mode });
+            await fetchAndStoreSealedProductsBySearch(searchTerm, {
+                mode,
+                idsWithTodayPrice,
+            });
         totalProducts += productsStored;
         totalHistory += historyStored;
         const cost = config.batch.sealedIncludeHistory ? 2 : 1;
         creditsUsed += productsStored * cost;
         await saveCheckpoint("sealed", String(globalIndex));
-        console.log(
+        log(
             `  → 商品: ${productsStored} 件, 価格履歴: ${historyStored} 件`,
         );
         if (i < termsToProcess.length - 1) {
-            console.log(
+            log(
                 `[sealed] レート制限回避: ${SEALED_DELAY_BETWEEN_TERMS_MS / 1000}s 待機...`,
             );
             await sleep(SEALED_DELAY_BETWEEN_TERMS_MS);
@@ -228,7 +226,7 @@ export async function runSealedProductsBatch(options = {}) {
         startIndex + termsToProcess.length >= SEARCH_TERMS.length
     ) {
         await clearCheckpoint("sealed");
-        console.log(
+        log(
             "[sealed] 全検索ワード処理完了。チェックポイントをクリアしました。",
         );
     }

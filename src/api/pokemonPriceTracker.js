@@ -25,48 +25,55 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const RATE_LIMIT_WAIT_MS = 65_000;
+
 /**
- * API リクエストの基底関数（リトライ付き）
- * 429・5xx・ネットワークエラー時に指数バックオフでリトライする
+ * fetch を実行し、レスポンスをパースしてエラーハンドリング
  */
-async function request(endpoint, options = {}) {
-  const url = `${BASE_URL}${endpoint}`;
-  const doRequest = async () => {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
+async function doFetch(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${API_KEY}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
 
-    const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      const error = new Error(data.message || `API Error: ${response.status}`);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
+  if (!response.ok) {
+    const error = new Error(data.message || `API Error: ${response.status}`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
+  }
 
-    return data;
-  };
+  return data;
+}
 
-  const RATE_LIMIT_WAIT_MS = 65_000;
+/**
+ * リトライ付きでリクエストを実行
+ * @param {string} url - リクエスト先 URL
+ * @param {Object} options - fetch オプション
+ * @param {Object} retryOpts - useRateLimitDelay: 429 時に長めの待機を使うか
+ */
+async function requestWithRetry(url, options = {}, retryOpts = {}) {
+  const { useRateLimitDelay = false } = retryOpts;
   let lastError;
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await doRequest();
+      return await doFetch(url, options);
     } catch (err) {
       lastError = err;
       if (attempt === MAX_RETRIES || !isRetryable(err)) throw err;
 
-      const delayMs = err.status === 429
+      const delayMs = useRateLimitDelay && err.status === 429
         ? RATE_LIMIT_WAIT_MS
         : RETRY_DELAY_MS * Math.pow(2, attempt);
       console.warn(
-        `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${endpoint}`
+        `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${url}`
       );
       await wait(delayMs);
     }
@@ -75,44 +82,19 @@ async function request(endpoint, options = {}) {
   throw lastError;
 }
 
-/** 絶対URLでリクエスト（tracker 等の別ベース用） */
+/**
+ * API リクエスト（相対パス、429 時は長めの待機）
+ */
+async function request(endpoint, options = {}) {
+  const url = `${BASE_URL}${endpoint}`;
+  return requestWithRetry(url, options, { useRateLimitDelay: true });
+}
+
+/**
+ * 絶対URLでリクエスト（tracker 等の別ベース用）
+ */
 async function requestAbsolute(fullUrl, options = {}) {
-  const doRequest = async () => {
-    const response = await fetch(fullUrl, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const error = new Error(data.message || `API Error: ${response.status}`);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-
-    return data;
-  };
-
-  let lastError;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await doRequest();
-    } catch (err) {
-      lastError = err;
-      if (attempt === MAX_RETRIES || !isRetryable(err)) throw err;
-
-      const delayMs = RETRY_DELAY_MS * Math.pow(2, attempt);
-      await wait(delayMs);
-    }
-  }
-
-  throw lastError;
+  return requestWithRetry(fullUrl, options);
 }
 
 /**
