@@ -1,4 +1,4 @@
-# 日次差分バッチ（毎日 0:00 JST に実行）
+# 日次差分バッチ（毎日 10:00 JST に実行）
 # リポジトリの Settings > Secrets and variables > Actions に以下を設定してください:
 # - POKEMON_API_KEY
 # - SUPABASE_URL
@@ -8,8 +8,8 @@ name: Daily Diff Batch
 
 on:
   schedule:
-    # 毎日 0:00 JST (UTC 15:00)
-    - cron: "0 15 * * *"
+    # 毎日 10:00 JST (UTC 01:00)
+    - cron: "0 1 * * *"
   workflow_dispatch: # 手動実行も可能
 
 jobs:
@@ -32,4 +32,5 @@ jobs:
           POKEMON_API_KEY: ${{ secrets.POKEMON_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BATCH_DELAY_MS: 4000
         run: npm run batch:diff

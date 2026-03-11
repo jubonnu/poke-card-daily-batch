@@ -49,7 +49,7 @@ export const config = {
         sealedIncludeHistory:
             process.env.BATCH_SEALED_INCLUDE_HISTORY !== "false",
         delayBetweenRequests: parseInt(
-            process.env.BATCH_DELAY_MS || "2000",
+            process.env.BATCH_DELAY_MS || "3500",
             10,
         ),
         /** USD→JPY 為替レート（バッチ保存時の円換算に使用。未設定時は 200） */

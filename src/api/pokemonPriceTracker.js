@@ -8,14 +8,43 @@ const MAX_RETRIES = config.api.maxRetries ?? 3;
 const RETRY_DELAY_MS = config.api.retryDelayMs ?? 5000;
 
 /**
- * リトライすべきエラーかどうか（429 / 5xx / ネットワークエラー）
+ * 403 blocked for abuse かどうか（retryAfter 待機後に再試行可能）
+ */
+function isBlockedForAbuse(error) {
+  return (
+    error.status === 403 &&
+    error.data?.error === 'API key blocked for abuse' &&
+    (error.data?.retryAfter != null || error.data?.blockedUntil != null)
+  );
+}
+
+/**
+ * リトライすべきエラーかどうか（429 / 403 blocked / 5xx / ネットワークエラー）
  */
 function isRetryable(error) {
   const status = error.status;
   if (status == null) return true; // ネットワークエラーなど
   if (status === 429) return true; // レート制限
+  if (isBlockedForAbuse(error)) return true; // ブロック解除後に再試行可能
   if (status >= 500 && status < 600) return true; // サーバーエラー
   return false;
+}
+
+/**
+ * ブロック解除までの待機ミリ秒を取得
+ */
+function getBlockedWaitMs(error) {
+  if (!isBlockedForAbuse(error)) return 0;
+  const { retryAfter, blockedUntil } = error.data ?? {};
+  if (typeof retryAfter === 'number' && retryAfter > 0) {
+    return retryAfter * 1000;
+  }
+  if (blockedUntil) {
+    const until = new Date(blockedUntil).getTime();
+    const now = Date.now();
+    return Math.max(0, until - now + 1000); // 1秒のバッファ
+  }
+  return 120_000; // フォールバック: 2分
 }
 
 /**
@@ -25,7 +54,7 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const RATE_LIMIT_WAIT_MS = 65_000;
+const RATE_LIMIT_WAIT_MS = 120_000; // 429 時: 2分待機（50回超でブロックされるため長めに）
 
 /**
  * fetch を実行し、レスポンスをパースしてエラーハンドリング
@@ -53,6 +82,33 @@ async function doFetch(url, options = {}) {
 }
 
 /**
+ * 429 発生カウンタ（直近の 429 回数に応じて追加遅延を推奨）
+ */
+let recent429Count = 0;
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5分
+const rateLimitTimestamps = [];
+
+function record429() {
+  const now = Date.now();
+  rateLimitTimestamps.push(now);
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  while (rateLimitTimestamps.length > 0 && rateLimitTimestamps[0] < cutoff) {
+    rateLimitTimestamps.shift();
+  }
+  recent429Count = rateLimitTimestamps.length;
+}
+
+/**
+ * 429 が直近で発生している場合の推奨追加遅延（ミリ秒）
+ */
+export function getRecommendedDelayMs() {
+  if (recent429Count === 0) return 0;
+  if (recent429Count >= 10) return 90_000; // 10回以上: 1.5分
+  if (recent429Count >= 5) return 60_000; // 5回以上: 1分
+  return 30_000; // 1回以上: 30秒
+}
+
+/**
  * リトライ付きでリクエストを実行
  * @param {string} url - リクエスト先 URL
  * @param {Object} options - fetch オプション
@@ -67,14 +123,27 @@ async function requestWithRetry(url, options = {}, retryOpts = {}) {
       return await doFetch(url, options);
     } catch (err) {
       lastError = err;
+      if (err.status === 429) record429();
+
       if (attempt === MAX_RETRIES || !isRetryable(err)) throw err;
 
-      const delayMs = useRateLimitDelay && err.status === 429
-        ? RATE_LIMIT_WAIT_MS
-        : RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.warn(
-        `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${url}`
-      );
+      let delayMs;
+      if (isBlockedForAbuse(err)) {
+        delayMs = getBlockedWaitMs(err);
+        console.warn(
+          `[API] ブロック検出: retryAfter まで ${Math.round(delayMs / 1000)}s 待機して再試行: ${url}`
+        );
+      } else if (useRateLimitDelay && err.status === 429) {
+        delayMs = RATE_LIMIT_WAIT_MS;
+        console.warn(
+          `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): 429 - ${delayMs / 1000}s 後に再試行: ${url}`
+        );
+      } else {
+        delayMs = RETRY_DELAY_MS * Math.pow(2, attempt);
+        console.warn(
+          `[API] リトライ (${attempt + 1}/${MAX_RETRIES}): ${err.status ?? 'network'} - ${delayMs / 1000}s 後に再試行: ${url}`
+        );
+      }
       await wait(delayMs);
     }
   }
@@ -94,7 +163,7 @@ async function request(endpoint, options = {}) {
  * 絶対URLでリクエスト（tracker 等の別ベース用）
  */
 async function requestAbsolute(fullUrl, options = {}) {
-  return requestWithRetry(fullUrl, options);
+  return requestWithRetry(fullUrl, options, { useRateLimitDelay: true });
 }
 
 /**

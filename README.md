@@ -69,7 +69,7 @@ supabase db push
 
 各テーブルのカラム定義は **[docs/テーブル定義.md](docs/テーブル定義.md)** にまとめてあります。
 
-> **日付のタイムゾーン**: `price_date` 等の日付は **日本時間（JST）** で記録されます。GitHub Actions で 0:00 JST 実行時も正しい日付が保存されます。
+> **日付のタイムゾーン**: `price_date` 等の日付は **日本時間（JST）** で記録されます。GitHub Actions で 10:00 JST 実行時も正しい日付が保存されます。
 
 ## バッチの実行
 
@@ -115,7 +115,7 @@ node src/index.js --type sets --mode diff
 | **週次** | `npm run batch:sets` | sets のメタデータ更新（名前・card_count 等）を反映 |
 | **手動** | `npm run batch:full` + `npm run batch:sealed` | 初回セットアップ・全件再同期 |
 
-**GitHub Actions** で毎日 0:00 JST に `batch:diff` が自動実行されます。リポジトリの **Settings > Secrets and variables > Actions** に `POKEMON_API_KEY`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` を設定してください。ワークフロー例は `.github/workflows/daily-batch.yml`、cron 例は **[docs/cron-example.sh](docs/cron-example.sh)** を参照してください。
+**GitHub Actions** で毎日 10:00 JST に `batch:diff` が自動実行されます。リポジトリの **Settings > Secrets and variables > Actions** に `POKEMON_API_KEY`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` を設定してください。ワークフロー例は `.github/workflows/daily-batch.yml`、cron 例は **[docs/cron-example.sh](docs/cron-example.sh)** を参照してください。
 
 ### 差分モードの定義
 

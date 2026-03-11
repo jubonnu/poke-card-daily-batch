@@ -4,7 +4,7 @@
  * カード1枚単位で GET /cards?language=japanese&tcgPlayerId={id}&includeHistory=true&includeEbay=true&days=180 を実行。
  * 価格・価格履歴・PSA価格・PSA価格履歴を取得して保存。
  */
-import { getCards, sleep } from "../api/pokemonPriceTracker.js";
+import { getCards, sleep, getRecommendedDelayMs } from "../api/pokemonPriceTracker.js";
 import { supabase } from "../db/supabase.js";
 import { config } from "../config.js";
 import { getUsdJpyRate, usdToJpy } from "./exchangeRate.js";
@@ -434,6 +434,12 @@ export async function fetchJapanesePrices(options = {}) {
                 `[prices] failed card tcg_player_id=${tcgPlayerId}`,
                 err,
             );
+            // 429/403 時は次ループ前に追加待機（悪循環防止）
+            if (err?.status === 429 || err?.status === 403) {
+                const extraMs = 90_000; // 90秒
+                log(`[prices] レート制限/ブロック検出: ${extraMs / 1000}s 待機して続行`);
+                await sleep(extraMs);
+            }
         }
 
         await saveCheckpoint("prices", card.tcg_player_id);
@@ -448,7 +454,9 @@ export async function fetchJapanesePrices(options = {}) {
             );
         }
 
-        await sleep(config.batch.delayBetweenRequests);
+        const baseDelay = config.batch.delayBetweenRequests;
+        const extraDelay = getRecommendedDelayMs();
+        await sleep(baseDelay + extraDelay);
     }
 
     if (startIndex + toProcess.length >= cards.length) {
