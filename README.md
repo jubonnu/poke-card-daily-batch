@@ -123,8 +123,14 @@ node src/index.js --type sets --mode diff
 |--------|------------|
 | **sets** | DB に未登録のセット（tcg_player_id が存在しないもの） |
 | **cards** | カードが 0 件、または card_count より少ないセット |
-| **prices** | card_prices（本日）・card_price_history・card_ebay_prices・card_ebay_price_history のいずれかに未保存のカード |
+| **prices** | card_prices（本日）・card_price_history・card_ebay_prices・card_ebay_price_history のいずれかに未保存のカード。**diff 時は sets.release_date >= 2016-01-01 のセットに属するカードのみ対象** |
 | **sealed** | 本日の sealed_product_price_history に未登録の商品 |
+
+### 差分バッチ（batch:diff）の実行内容
+
+`npm run batch:diff` は **prices のみ** を実行します（sets / cards / sealed は実行しません）。
+
+- 対象: `sets.release_date >= 2016-01-01` のセットに属するカードのうち、本日価格未登録のもの
 
 ## バッチ処理の流れ（3段階＋差分更新）
 

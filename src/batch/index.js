@@ -122,44 +122,32 @@ async function runSealedBatch(options = {}) {
 }
 
 /**
- * 差分バッチ（日次用。sets → cards → prices → sealed を順に差分モードで実行）
+ * 差分バッチ（日次用。prices のみ実行。sets/cards/sealed は実行しない）
+ * prices は release_date >= 2016-01-01 のセットに属するカードのみ対象
  */
 async function runDiffBatch(options = {}) {
   const runId = crypto.randomUUID();
   log(`差分バッチを開始 (run: ${runId})`);
 
-  const batchOptions = { ...options, mode: 'diff' };
+  const batchOptions = { ...options, mode: 'diff', minReleaseDate: '2016-01-01' };
 
   try {
-    const setsResult = await runSetsBatch(batchOptions);
-    const cardsResult = await runCardsOnlyBatch(batchOptions);
     const pricesResult = await runPricesBatch(batchOptions);
-    const sealedResult = await runSealedBatch(batchOptions);
 
     await logBatchRun('diff', 'completed', {
-      setsFetched: setsResult.setsFetched ?? 0,
-      cardsFetched: cardsResult.cardsStored ?? 0,
       pricesUpdated: pricesResult.pricesStored ?? 0,
-      creditsUsed: sealedResult.creditsUsed ?? 0,
       metadata: {
         historyStored: pricesResult.historyStored ?? 0,
         psaStored: pricesResult.psaStored ?? 0,
-        productsStored: sealedResult.productsStored ?? 0,
-        sealedHistoryStored: sealedResult.historyStored ?? 0,
       },
     });
 
     log('差分バッチ完了');
     return {
       success: true,
-      setsFetched: setsResult.setsFetched,
-      cardsStored: cardsResult.cardsStored,
       pricesStored: pricesResult.pricesStored,
       historyStored: pricesResult.historyStored,
       psaStored: pricesResult.psaStored,
-      productsStored: sealedResult.productsStored,
-      sealedHistoryStored: sealedResult.historyStored,
-      creditsUsed: sealedResult.creditsUsed,
     };
   } catch (err) {
     logError(`差分バッチエラー: ${err.message}`);

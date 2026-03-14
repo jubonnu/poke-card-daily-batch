@@ -27,8 +27,21 @@ const CARDS_PAGE_SIZE = 1000;
  * limit=0 のときはページネーションで全件取得（Supabase の 1000 件上限を超える分も取得）
  * @param {number} limit - 0 のときは全件
  * @param {string} mode - 'full' | 'diff'。diff のときは本日 card_prices に未登録のカードのみ返す
+ * @param {string} [minReleaseDate] - 指定時は sets.release_date >= minReleaseDate のセットに属するカードのみ対象
  */
-async function getCardsForPrices(limit = 0, mode = "full") {
+async function getCardsForPrices(limit = 0, mode = "full", minReleaseDate = null) {
+    let setIds = null;
+    if (minReleaseDate) {
+        const { data: setsData, error: setsError } = await supabase
+            .from("sets")
+            .select("id")
+            .eq("language", "japanese")
+            .gte("release_date", minReleaseDate);
+        if (setsError) throw new Error(`セット取得に失敗: ${setsError.message}`);
+        setIds = (setsData ?? []).map((s) => s.id).filter(Boolean);
+        if (setIds.length === 0) return [];
+    }
+
     const all = [];
     let offset = 0;
     const pageSize = limit > 0 ? limit : CARDS_PAGE_SIZE;
@@ -38,8 +51,13 @@ async function getCardsForPrices(limit = 0, mode = "full") {
             .from("cards")
             .select("id, tcg_player_id")
             .eq("language", "japanese")
-            .not("tcg_player_id", "is", null)
-            .range(offset, offset + pageSize - 1);
+            .not("tcg_player_id", "is", null);
+
+        if (setIds && setIds.length > 0) {
+            query = query.in("set_id", setIds);
+        }
+
+        query = query.range(offset, offset + pageSize - 1);
 
         const { data, error } = await query;
         if (error) throw new Error(`カード取得に失敗: ${error.message}`);
@@ -312,18 +330,28 @@ export async function fetchJapanesePrices(options = {}) {
         includeHistory = true,
         includePsa = true,
         mode = config.batch.mode,
+        minReleaseDate = mode === "diff" ? "2016-01-01" : null,
     } = options;
     const fullRun = config.batch.fullRun;
 
     const rate = await getUsdJpyRate();
     const priceDate = getTodayDateString();
     log(`為替レート: 1 USD = ${rate} JPY`);
-    if (mode === "diff") log("差分モード: 本日価格未登録のカードのみ取得します。");
+    if (mode === "diff") {
+        log("差分モード: 本日価格未登録のカードのみ取得します。");
+        if (minReleaseDate) {
+            log(`対象: release_date >= ${minReleaseDate} のセットに属するカードのみ`);
+        }
+    }
 
-    const cards = await getCardsForPrices(maxCards, mode);
+    const cards = await getCardsForPrices(maxCards, mode, minReleaseDate);
     if (cards.length === 0) {
         if (mode === "diff") {
-            log("差分モード: 本日価格未登録のカードはありません。スキップします。");
+            log(
+                minReleaseDate
+                    ? "差分モード: 対象セットに本日価格未登録のカードはありません。スキップします。"
+                    : "差分モード: 本日価格未登録のカードはありません。スキップします。",
+            );
         } else {
             log(
                 "日本語カードがありません。先に batch:sets と batch:cards を実行してください。",
