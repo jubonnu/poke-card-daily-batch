@@ -31,7 +31,7 @@ cp .env.example .env
 | SUPABASE_SERVICE_ROLE_KEY | ○ | Supabase サービスロールキー（RLS をバイパス） |
 | BATCH_MAX_SETS | - | 取得するセット数。**0=全セット**（デフォルト） |
 | BATCH_CARDS_PER_REQUEST | - | 1リクエストあたりのカード数（デフォルト: 50） |
-| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: 2000） |
+| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: 1100。API 60req/min 対応、6時間以内完了用） |
 | BATCH_FULL_RUN | - | **true** のときチェックポイントを無視し先頭から実行 |
 | BATCH_MODE | - | `full`（全取得）または `diff`（差分）。デフォルト: full |
 | USD_JPY_RATE | - | USD→JPY 為替レート（デフォルト: 200） |

@@ -48,8 +48,9 @@ export const config = {
         includeEbay: process.env.BATCH_INCLUDE_EBAY !== "false",
         sealedIncludeHistory:
             process.env.BATCH_SEALED_INCLUDE_HISTORY !== "false",
+        /** リクエスト間の待機ミリ秒。API 60req/min のため 1100 以上推奨。6時間以内完了のため 1100 をデフォルトに */
         delayBetweenRequests: parseInt(
-            process.env.BATCH_DELAY_MS || "3500",
+            process.env.BATCH_DELAY_MS || "1100",
             10,
         ),
         /** USD→JPY 為替レート（バッチ保存時の円換算に使用。未設定時は 200） */

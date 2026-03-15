@@ -32,5 +32,5 @@ jobs:
           POKEMON_API_KEY: ${{ secrets.POKEMON_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          BATCH_DELAY_MS: 4000
+          BATCH_DELAY_MS: 1100
         run: npm run batch:diff
