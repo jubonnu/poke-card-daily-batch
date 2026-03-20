@@ -388,12 +388,16 @@ export async function fetchJapanesePrices(options = {}) {
     const total = cards.length;
     const progressInterval = 5; // 5件ごとに進捗表示
 
+    const baseDelay = config.batch.delayBetweenRequests;
+
     for (let i = 0; i < toProcess.length; i++) {
         const card = toProcess[i];
         const tcgPlayerId = card.tcg_player_id;
+
+        let res;
         try {
             if (!tcgPlayerId?.trim()) continue;
-            const res = await getCards({
+            const resPromise = getCards({
                 tcgPlayerId,
                 language: "japanese",
                 includeHistory,
@@ -403,6 +407,12 @@ export async function fetchJapanesePrices(options = {}) {
                 maxDataPoints: 365,
                 limit: 1,
             });
+            // 2件目以降: 待機中にAPI応答を並行取得（オーバーラップで6時間以内完了を目指す）
+            if (i > 0) {
+                const extraDelay = getRecommendedDelayMs();
+                await sleep(baseDelay + extraDelay);
+            }
+            res = await resPromise;
 
             const raw = res?.data;
             const cardData = Array.isArray(raw) ? raw[0] : raw;
@@ -481,10 +491,6 @@ export async function fetchJapanesePrices(options = {}) {
                 `[prices] 処理中: ${processed}/${total} 件 (価格 ${pricesStored}, 履歴 ${historyStored}, PSA ${psaStored}, PSA履歴 ${psaHistoryStored})`,
             );
         }
-
-        const baseDelay = config.batch.delayBetweenRequests;
-        const extraDelay = getRecommendedDelayMs();
-        await sleep(baseDelay + extraDelay);
     }
 
     if (startIndex + toProcess.length >= cards.length) {
