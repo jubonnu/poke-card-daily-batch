@@ -330,7 +330,7 @@ export async function fetchJapanesePrices(options = {}) {
         includeHistory = true,
         includePsa = true,
         mode = config.batch.mode,
-        minReleaseDate = mode === "diff" ? "2016-01-01" : null,
+        minReleaseDate = mode === "diff" ? "2017-01-01" : null,
     } = options;
     const fullRun = config.batch.fullRun;
 
