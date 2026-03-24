@@ -21,6 +21,15 @@ function parseGradeKey(gradeKey) {
 }
 
 const CARDS_PAGE_SIZE = 1000;
+/** Supabase 1リクエストあたりの upsert 行数上限に合わせて分割（大量履歴でタイムアウト回避） */
+const UPSERT_CHUNK_SIZE = 500;
+
+function findNextValidCardIndex(cards, fromIdx) {
+    for (let j = fromIdx; j < cards.length; j++) {
+        if (cards[j].tcg_player_id?.trim?.()) return j;
+    }
+    return -1;
+}
 
 /**
  * 対象カード取得。全日本語カード（tcg_player_id が有効なもの）
@@ -228,14 +237,20 @@ async function saveCardHistory(card, historyData, rate) {
 
     if (records.length === 0) return 0;
 
-    const { error } = await supabase
-        .from("card_price_history")
-        .upsert(records, {
-            onConflict:
-                "card_tcg_player_id,price_date,condition_name,printing_variant",
-            ignoreDuplicates: false,
-        });
-    return error ? 0 : records.length;
+    let stored = 0;
+    for (let off = 0; off < records.length; off += UPSERT_CHUNK_SIZE) {
+        const slice = records.slice(off, off + UPSERT_CHUNK_SIZE);
+        const { error } = await supabase
+            .from("card_price_history")
+            .upsert(slice, {
+                onConflict:
+                    "card_tcg_player_id,price_date,condition_name,printing_variant",
+                ignoreDuplicates: false,
+            });
+        if (error) return stored;
+        stored += slice.length;
+    }
+    return stored;
 }
 
 /**
@@ -312,11 +327,19 @@ async function savePsaPriceHistory(card, priceHistory, rate) {
         }
     }
     if (records.length === 0) return 0;
-    const { error } = await supabase.from("card_ebay_price_history").upsert(records, {
-        onConflict: "card_tcg_player_id,grade_key,price_date",
-        ignoreDuplicates: false,
-    });
-    return error ? 0 : records.length;
+    let stored = 0;
+    for (let off = 0; off < records.length; off += UPSERT_CHUNK_SIZE) {
+        const slice = records.slice(off, off + UPSERT_CHUNK_SIZE);
+        const { error } = await supabase
+            .from("card_ebay_price_history")
+            .upsert(slice, {
+                onConflict: "card_tcg_player_id,grade_key,price_date",
+                ignoreDuplicates: false,
+            });
+        if (error) return stored;
+        stored += slice.length;
+    }
+    return stored;
 }
 
 /**
@@ -389,15 +412,19 @@ export async function fetchJapanesePrices(options = {}) {
     const progressInterval = 5; // 5件ごとに進捗表示
 
     const baseDelay = config.batch.delayBetweenRequests;
+    /** 次の API リクエスト（パイプライン: DB 保存と並行して応答を取得） */
+    let resPromise = null;
+    /** 現在の resPromise を開始した時刻（レート制限の間隔計算用） */
+    let lastRequestStart = 0;
 
     for (let i = 0; i < toProcess.length; i++) {
         const card = toProcess[i];
         const tcgPlayerId = card.tcg_player_id;
 
-        let res;
-        try {
-            if (!tcgPlayerId?.trim()) continue;
-            const resPromise = getCards({
+        if (!tcgPlayerId?.trim()) continue;
+
+        if (!resPromise) {
+            resPromise = getCards({
                 tcgPlayerId,
                 language: "japanese",
                 includeHistory,
@@ -407,12 +434,39 @@ export async function fetchJapanesePrices(options = {}) {
                 maxDataPoints: 365,
                 limit: 1,
             });
-            // 2件目以降: 待機中にAPI応答を並行取得（オーバーラップで6時間以内完了を目指す）
-            if (i > 0) {
-                const extraDelay = getRecommendedDelayMs();
-                await sleep(baseDelay + extraDelay);
-            }
+            lastRequestStart = Date.now();
+        }
+
+        let res;
+        try {
             res = await resPromise;
+
+            const nextIdx = findNextValidCardIndex(toProcess, i + 1);
+            if (nextIdx >= 0) {
+                const extraDelay = getRecommendedDelayMs();
+                await sleep(
+                    Math.max(
+                        0,
+                        lastRequestStart +
+                            baseDelay +
+                            extraDelay -
+                            Date.now(),
+                    ),
+                );
+                resPromise = getCards({
+                    tcgPlayerId: toProcess[nextIdx].tcg_player_id,
+                    language: "japanese",
+                    includeHistory,
+                    includeEbay: includePsa,
+                    includeBoth: includeHistory && includePsa,
+                    days: 180,
+                    maxDataPoints: 365,
+                    limit: 1,
+                });
+                lastRequestStart = Date.now();
+            } else {
+                resPromise = null;
+            }
 
             const raw = res?.data;
             const cardData = Array.isArray(raw) ? raw[0] : raw;
@@ -433,26 +487,31 @@ export async function fetchJapanesePrices(options = {}) {
                 res?.ebay ??
                 res?.ebayData;
 
-            const p = await saveCardPrices(card, cardData.prices ?? {}, rate, priceDate);
-            pricesStored += p;
-
+            const saveTasks = [
+                saveCardPrices(card, cardData.prices ?? {}, rate, priceDate),
+            ];
             if (includeHistory && priceHistory) {
                 const flatHistory = flattenPriceHistory(priceHistory);
-                const h = await saveCardHistory(card, flatHistory, rate);
-                historyStored += h;
+                saveTasks.push(saveCardHistory(card, flatHistory, rate));
             }
-
             if (includePsa && ebayData) {
-                const s = await savePsaPrices(card, ebayData, rate);
-                psaStored += s;
+                saveTasks.push(savePsaPrices(card, ebayData, rate));
                 const ebayPriceHistory =
                     ebayData.priceHistory ?? ebayData.price_history;
-                const ph = await savePsaPriceHistory(
-                    card,
-                    ebayPriceHistory,
-                    rate,
+                saveTasks.push(
+                    savePsaPriceHistory(card, ebayPriceHistory, rate),
                 );
-                psaHistoryStored += ph;
+            }
+
+            const results = await Promise.all(saveTasks);
+            let r = 0;
+            pricesStored += results[r++] ?? 0;
+            if (includeHistory && priceHistory) {
+                historyStored += results[r++] ?? 0;
+            }
+            if (includePsa && ebayData) {
+                psaStored += results[r++] ?? 0;
+                psaHistoryStored += results[r++] ?? 0;
             }
 
             // 履歴・eBay が取れない場合、最初の1件だけレスポンス構造をダンプ（診断用）
@@ -468,6 +527,7 @@ export async function fetchJapanesePrices(options = {}) {
                 );
             }
         } catch (err) {
+            resPromise = null;
             logError(
                 `[prices] failed card tcg_player_id=${tcgPlayerId}`,
                 err,

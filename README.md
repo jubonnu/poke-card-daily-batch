@@ -31,7 +31,7 @@ cp .env.example .env
 | SUPABASE_SERVICE_ROLE_KEY | ○ | Supabase サービスロールキー（RLS をバイパス） |
 | BATCH_MAX_SETS | - | 取得するセット数。**0=全セット**（デフォルト） |
 | BATCH_CARDS_PER_REQUEST | - | 1リクエストあたりのカード数（デフォルト: 50） |
-| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: 1100。API 60req/min 対応、6時間以内完了用） |
+| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: **1000**。API 60req/min。429 が多いときは 1100〜1200） |
 | BATCH_FULL_RUN | - | **true** のときチェックポイントを無視し先頭から実行 |
 | BATCH_MODE | - | `full`（全取得）または `diff`（差分）。デフォルト: full |
 | USD_JPY_RATE | - | USD→JPY 為替レート（デフォルト: 200） |
@@ -116,6 +116,8 @@ node src/index.js --type sets --mode diff
 | **手動** | `npm run batch:full` + `npm run batch:sealed` | 初回セットアップ・全件再同期 |
 
 **GitHub Actions** で毎日 10:00 JST に `batch:diff` が自動実行されます。リポジトリの **Settings > Secrets and variables > Actions** に `POKEMON_API_KEY`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` を設定してください。ワークフロー例は `.github/workflows/daily-batch.yml`、cron 例は **[docs/cron-example.sh](docs/cron-example.sh)** を参照してください。
+
+> **1 ジョブ 6 時間以内に全件完了**を目指すため、prices バッチでは次を実施しています: API リクエストのパイプライン化（次のカードの取得を DB 保存と並行）、価格系 4 テーブルへの保存を `Promise.all` で並列、大量履歴の upsert を 500 行ずつ分割、デフォルト待機 **1000ms**（60 req/min）。それでも 429 が頻発する場合は `BATCH_DELAY_MS` を上げてください。
 
 ### 差分モードの定義
 
