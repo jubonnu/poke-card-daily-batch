@@ -1,7 +1,7 @@
 /**
  * ③ 価格・履歴・PSAバッチ
  * cards テーブルに存在する全日本語カードを対象。
- * カード1枚単位で GET /cards?language=japanese&tcgPlayerId={id}&includeHistory=true&includeEbay=true&days=180 を実行。
+ * カード1枚単位で GET /cards?language=japanese&tcgPlayerId={id}&includeHistory=true&includeEbay=true（days/maxDataPoints はモード・環境変数）を実行。
  * 価格・価格履歴・PSA価格・PSA価格履歴を取得して保存。
  */
 import { getCards, sleep, getRecommendedDelayMs } from "../api/pokemonPriceTracker.js";
@@ -403,6 +403,24 @@ export async function fetchJapanesePrices(options = {}) {
     const toProcess = cards.slice(startIndex);
     log(`価格取得開始: ${toProcess.length} 件 (全体 ${cards.length} 件中)`);
 
+    const {
+        pricesHistoryDaysDiff,
+        pricesHistoryDaysFull,
+        pricesMaxDataPointsDiff,
+        pricesMaxDataPointsFull,
+        pricesHistoryDaysOverride,
+        pricesMaxDataPointsOverride,
+    } = config.batch;
+    const apiHistoryDays =
+        pricesHistoryDaysOverride ??
+        (mode === "diff" ? pricesHistoryDaysDiff : pricesHistoryDaysFull);
+    const apiMaxDataPoints =
+        pricesMaxDataPointsOverride ??
+        (mode === "diff" ? pricesMaxDataPointsDiff : pricesMaxDataPointsFull);
+    log(
+        `価格 API: history days=${apiHistoryDays}, maxDataPoints=${apiMaxDataPoints}`,
+    );
+
     let pricesStored = 0;
     let historyStored = 0;
     let psaStored = 0;
@@ -430,8 +448,8 @@ export async function fetchJapanesePrices(options = {}) {
                 includeHistory,
                 includeEbay: includePsa,
                 includeBoth: includeHistory && includePsa,
-                days: 180,
-                maxDataPoints: 365,
+                days: apiHistoryDays,
+                maxDataPoints: apiMaxDataPoints,
                 limit: 1,
             });
             lastRequestStart = Date.now();
@@ -459,8 +477,8 @@ export async function fetchJapanesePrices(options = {}) {
                     includeHistory,
                     includeEbay: includePsa,
                     includeBoth: includeHistory && includePsa,
-                    days: 180,
-                    maxDataPoints: 365,
+                    days: apiHistoryDays,
+                    maxDataPoints: apiMaxDataPoints,
                     limit: 1,
                 });
                 lastRequestStart = Date.now();

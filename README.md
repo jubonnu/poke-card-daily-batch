@@ -31,7 +31,13 @@ cp .env.example .env
 | SUPABASE_SERVICE_ROLE_KEY | ○ | Supabase サービスロールキー（RLS をバイパス） |
 | BATCH_MAX_SETS | - | 取得するセット数。**0=全セット**（デフォルト） |
 | BATCH_CARDS_PER_REQUEST | - | 1リクエストあたりのカード数（デフォルト: 50） |
-| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: **1000**。API 60req/min。429 が多いときは 1100〜1200） |
+| BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: **1200**。429 回避〜50 req/min。短すぎると 120s リトライで逆遅延） |
+| BATCH_PRICES_HISTORY_DAYS_DIFF | - | diff 時の API `days`（デフォルト **90**） |
+| BATCH_PRICES_MAX_DATA_POINTS_DIFF | - | diff 時の API `maxDataPoints`（デフォルト **200**） |
+| BATCH_PRICES_HISTORY_DAYS_FULL | - | full 時の API `days`（デフォルト 180） |
+| BATCH_PRICES_MAX_DATA_POINTS_FULL | - | full 時の API `maxDataPoints`（デフォルト 365） |
+| BATCH_PRICES_HISTORY_DAYS | - | 指定時は diff/full 共通で `days` を上書き |
+| BATCH_PRICES_MAX_DATA_POINTS | - | 指定時は diff/full 共通で `maxDataPoints` を上書き |
 | BATCH_FULL_RUN | - | **true** のときチェックポイントを無視し先頭から実行 |
 | BATCH_MODE | - | `full`（全取得）または `diff`（差分）。デフォルト: full |
 | USD_JPY_RATE | - | USD→JPY 為替レート（デフォルト: 200） |
@@ -117,7 +123,7 @@ node src/index.js --type sets --mode diff
 
 **GitHub Actions** で毎日 10:00 JST に `batch:diff` が自動実行されます。リポジトリの **Settings > Secrets and variables > Actions** に `POKEMON_API_KEY`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` を設定してください。ワークフロー例は `.github/workflows/daily-batch.yml`、cron 例は **[docs/cron-example.sh](docs/cron-example.sh)** を参照してください。
 
-> **1 ジョブ 6 時間以内に全件完了**を目指すため、prices バッチでは次を実施しています: API リクエストのパイプライン化（次のカードの取得を DB 保存と並行）、価格系 4 テーブルへの保存を `Promise.all` で並列、大量履歴の upsert を 500 行ずつ分割、デフォルト待機 **1000ms**（60 req/min）。それでも 429 が頻発する場合は `BATCH_DELAY_MS` を上げてください。
+> **1 ジョブ 6 時間以内に全件完了**を目指すため、prices ではパイプライン化・`Promise.all` 保存・履歴 upsert のチャンク化に加え、**日次 diff は API 履歴を 90 日・200 点に抑え**レスポンスと DB を軽量化、**待機は 1200ms**（429 による 120 秒リトライを減らす）。長期履歴を毎回フルで取りたい場合は週次で `batch:prices`（full）を走らせるか、`BATCH_PRICES_HISTORY_DAYS` 等で上書きしてください。
 
 ### 差分モードの定義
 

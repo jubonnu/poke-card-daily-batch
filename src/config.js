@@ -48,11 +48,37 @@ export const config = {
         includeEbay: process.env.BATCH_INCLUDE_EBAY !== "false",
         sealedIncludeHistory:
             process.env.BATCH_SEALED_INCLUDE_HISTORY !== "false",
-        /** リクエスト間の待機ミリ秒。API 60req/min なら 1000。429 が多いときは 1100〜1200 */
+        /** リクエスト間の待機ミリ秒。429 回避のため 1200（50 req/min）推奨。日次は workflow で指定 */
         delayBetweenRequests: parseInt(
-            process.env.BATCH_DELAY_MS || "1000",
+            process.env.BATCH_DELAY_MS || "1200",
             10,
         ),
+        /** 価格 API days（BATCH_PRICES_HISTORY_DAYS で上書き可）。diff は日次6h向けに短め */
+        pricesHistoryDaysDiff: parseInt(
+            process.env.BATCH_PRICES_HISTORY_DAYS_DIFF || "90",
+            10,
+        ),
+        pricesHistoryDaysFull: parseInt(
+            process.env.BATCH_PRICES_HISTORY_DAYS_FULL || "180",
+            10,
+        ),
+        pricesMaxDataPointsDiff: parseInt(
+            process.env.BATCH_PRICES_MAX_DATA_POINTS_DIFF || "200",
+            10,
+        ),
+        pricesMaxDataPointsFull: parseInt(
+            process.env.BATCH_PRICES_MAX_DATA_POINTS_FULL || "365",
+            10,
+        ),
+        /** 両モード共通で days を固定したいとき（例: 180）。未設定なら diff/full 別デフォルト */
+        pricesHistoryDaysOverride: process.env.BATCH_PRICES_HISTORY_DAYS
+            ? parseInt(process.env.BATCH_PRICES_HISTORY_DAYS, 10)
+            : null,
+        pricesMaxDataPointsOverride:
+            process.env.BATCH_PRICES_MAX_DATA_POINTS != null &&
+            process.env.BATCH_PRICES_MAX_DATA_POINTS !== ""
+                ? parseInt(process.env.BATCH_PRICES_MAX_DATA_POINTS, 10)
+                : null,
         /** USD→JPY 為替レート（バッチ保存時の円換算に使用。未設定時は 200） */
         usdJpyRate: parseFloat(process.env.USD_JPY_RATE || "200", 10) || 200,
         /** true のときチェックポイントを無視し先頭から実行（未設定時は続きから再開） */

@@ -32,6 +32,6 @@ jobs:
           POKEMON_API_KEY: ${{ secrets.POKEMON_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # 60 req/min ちょうど（1ジョブ6時間で全件完了しやすくする）
-          BATCH_DELAY_MS: 1000
+          # 429 回避の余裕（~50 req/min）。1000 だと 429→120s リトライで逆に遅くなることがある
+          BATCH_DELAY_MS: 1200
         run: npm run batch:diff
