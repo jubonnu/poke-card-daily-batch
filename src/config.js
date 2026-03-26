@@ -55,7 +55,7 @@ export const config = {
         ),
         /** 価格 API days（BATCH_PRICES_HISTORY_DAYS で上書き可）。diff は日次6h向けに短め */
         pricesHistoryDaysDiff: parseInt(
-            process.env.BATCH_PRICES_HISTORY_DAYS_DIFF || "90",
+            process.env.BATCH_PRICES_HISTORY_DAYS_DIFF || "30",
             10,
         ),
         pricesHistoryDaysFull: parseInt(

@@ -123,13 +123,13 @@ async function runSealedBatch(options = {}) {
 
 /**
  * 差分バッチ（日次用。prices のみ実行。sets/cards/sealed は実行しない）
- * prices は release_date >= 2017-01-01 のセットに属するカードのみ対象
+ * prices は release_date >= 2016-01-01 のセットに属するカードのみ対象
  */
 async function runDiffBatch(options = {}) {
   const runId = crypto.randomUUID();
   log(`差分バッチを開始 (run: ${runId})`);
 
-  const batchOptions = { ...options, mode: 'diff', minReleaseDate: '2017-01-01' };
+  const batchOptions = { ...options, mode: 'diff', minReleaseDate: '2016-01-01' };
 
   try {
     const pricesResult = await runPricesBatch(batchOptions);

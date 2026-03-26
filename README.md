@@ -32,7 +32,7 @@ cp .env.example .env
 | BATCH_MAX_SETS | - | 取得するセット数。**0=全セット**（デフォルト） |
 | BATCH_CARDS_PER_REQUEST | - | 1リクエストあたりのカード数（デフォルト: 50） |
 | BATCH_DELAY_MS | - | リクエスト間の待機ミリ秒（デフォルト: **1200**。429 回避〜50 req/min。短すぎると 120s リトライで逆遅延） |
-| BATCH_PRICES_HISTORY_DAYS_DIFF | - | diff 時の API `days`（デフォルト **90**） |
+| BATCH_PRICES_HISTORY_DAYS_DIFF | - | diff 時の API `days`（デフォルト **30**） |
 | BATCH_PRICES_MAX_DATA_POINTS_DIFF | - | diff 時の API `maxDataPoints`（デフォルト **200**） |
 | BATCH_PRICES_HISTORY_DAYS_FULL | - | full 時の API `days`（デフォルト 180） |
 | BATCH_PRICES_MAX_DATA_POINTS_FULL | - | full 時の API `maxDataPoints`（デフォルト 365） |
@@ -123,7 +123,7 @@ node src/index.js --type sets --mode diff
 
 **GitHub Actions** で毎日 10:00 JST に `batch:diff` が自動実行されます。リポジトリの **Settings > Secrets and variables > Actions** に `POKEMON_API_KEY`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` を設定してください。ワークフロー例は `.github/workflows/daily-batch.yml`、cron 例は **[docs/cron-example.sh](docs/cron-example.sh)** を参照してください。
 
-> **1 ジョブ 6 時間以内に全件完了**を目指すため、prices ではパイプライン化・`Promise.all` 保存・履歴 upsert のチャンク化に加え、**日次 diff は API 履歴を 90 日・200 点に抑え**レスポンスと DB を軽量化、**待機は 1200ms**（429 による 120 秒リトライを減らす）。長期履歴を毎回フルで取りたい場合は週次で `batch:prices`（full）を走らせるか、`BATCH_PRICES_HISTORY_DAYS` 等で上書きしてください。
+> **1 ジョブ 6 時間以内に全件完了**を目指すため、prices ではパイプライン化・`Promise.all` 保存・履歴 upsert のチャンク化に加え、**日次 diff は API 履歴を 30 日・200 点に抑え**レスポンスと DB を軽量化、**待機は 1200ms**（429 による 120 秒リトライを減らす）。長期履歴を毎回フルで取りたい場合は週次で `batch:prices`（full）を走らせるか、`BATCH_PRICES_HISTORY_DAYS` 等で上書きしてください。
 
 ### 差分モードの定義
 
@@ -131,14 +131,14 @@ node src/index.js --type sets --mode diff
 |--------|------------|
 | **sets** | DB に未登録のセット（tcg_player_id が存在しないもの） |
 | **cards** | カードが 0 件、または card_count より少ないセット |
-| **prices** | card_prices（本日）・card_price_history・card_ebay_prices・card_ebay_price_history のいずれかに未保存のカード。**diff 時は sets.release_date >= 2017-01-01 のセットに属するカードのみ対象** |
+| **prices** | card_prices（本日）・card_price_history・card_ebay_prices・card_ebay_price_history のいずれかに未保存のカード。**diff 時は sets.release_date >= 2016-01-01 のセットに属するカードのみ対象** |
 | **sealed** | 本日の sealed_product_price_history に未登録の商品 |
 
 ### 差分バッチ（batch:diff）の実行内容
 
 `npm run batch:diff` は **prices のみ** を実行します（sets / cards / sealed は実行しません）。
 
-- 対象: `sets.release_date >= 2017-01-01` のセットに属するカードのうち、本日価格未登録のもの
+- 対象: `sets.release_date >= 2016-01-01` のセットに属するカードのうち、本日価格未登録のもの
 
 ## バッチ処理の流れ（3段階＋差分更新）
 
