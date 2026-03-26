@@ -40,7 +40,8 @@ cp .env.example .env
 | BATCH_PRICES_MAX_DATA_POINTS | - | 指定時は diff/full 共通で `maxDataPoints` を上書き |
 | BATCH_FULL_RUN | - | **true** のときチェックポイントを無視し先頭から実行 |
 | BATCH_MODE | - | `full`（全取得）または `diff`（差分）。デフォルト: full |
-| USD_JPY_RATE | - | USD→JPY 為替レート（デフォルト: 200） |
+| USD_JPY_RATE | - | USD→JPY **基準**レート（デフォルト: **150**） |
+| USD_JPY_SAVE_MULTIPLIER | - | 円換算保存時に基準へ掛ける係数（デフォルト: **1.5** → 実効 150×1.5=225） |
 | API_MAX_RETRIES | - | API 失敗時のリトライ回数。デフォルト 3、0 で無効 |
 | API_RETRY_DELAY_MS | - | リトライ初回待機ミリ秒（指数バックオフ）。デフォルト 5000 |
 

@@ -10,6 +10,7 @@ import {
     saveCheckpoint,
     clearCheckpoint,
 } from "./checkpoint.js";
+import { getEffectiveUsdJpyRate } from "./exchangeRate.js";
 import { log } from "./utils/logger.js";
 
 const SEALED_PRODUCTS_PAGE_LIMIT = 100;
@@ -57,7 +58,7 @@ async function fetchAndStoreSealedProductsBySearch(searchTerm, options = {}) {
             );
         }
 
-        const jpyRate = config.batch.usdJpyRate;
+        const jpyRate = getEffectiveUsdJpyRate();
         const productRecords = productsToSave.map((p) => {
             const { set_code, set_name } = parseSetName(p.setName);
             return {

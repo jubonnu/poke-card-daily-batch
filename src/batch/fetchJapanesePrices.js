@@ -359,7 +359,9 @@ export async function fetchJapanesePrices(options = {}) {
 
     const rate = await getUsdJpyRate();
     const priceDate = getTodayDateString();
-    log(`為替レート: 1 USD = ${rate} JPY`);
+    log(
+        `為替レート（保存用）: 1 USD = ${config.batch.usdJpyRate} JPY × ${config.batch.usdJpySaveMultiplier} = ${rate} JPY`,
+    );
     if (mode === "diff") {
         log("差分モード: 本日価格未登録のカードのみ取得します。");
         if (minReleaseDate) {
