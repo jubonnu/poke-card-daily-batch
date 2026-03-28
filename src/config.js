@@ -81,13 +81,13 @@ export const config = {
                 : null,
         /** USD→JPY 基準レート（未設定時 150）。実際の保存は × usdJpySaveMultiplier */
         usdJpyRate: parseFloat(process.env.USD_JPY_RATE || "150", 10) || 150,
-        /** 円換算保存時に基準レートへ掛ける係数（未設定時 1.5 → 実効 150×1.5=225） */
+        /** 円換算保存時に基準レートへ掛ける係数（未設定時 2.19 → 実効 150×2.19=328.5） */
         usdJpySaveMultiplier: (() => {
             const v = parseFloat(
-                process.env.USD_JPY_SAVE_MULTIPLIER ?? "1.5",
+                process.env.USD_JPY_SAVE_MULTIPLIER ?? "2.19",
                 10,
             );
-            return Number.isFinite(v) && v > 0 ? v : 1.5;
+            return Number.isFinite(v) && v > 0 ? v : 2.19;
         })(),
         /** true のときチェックポイントを無視し先頭から実行（未設定時は続きから再開） */
         fullRun: process.env.BATCH_FULL_RUN === "true",

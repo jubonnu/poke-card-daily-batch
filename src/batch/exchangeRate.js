@@ -14,7 +14,7 @@ export function getEffectiveUsdJpyRate() {
 /**
  * バッチ保存時の USD→JPY 為替レートを取得（実効レート）
  * 履歴は「当日の円」で残し、表示は即円。後から再計算も可能。
- * @returns {Promise<number>} 例: 基準150 × 1.5 = 225
+ * @returns {Promise<number>} 例: 基準150 × 2.19 = 328.5
  */
 export async function getUsdJpyRate() {
   // 将来: 外部APIで取得する場合はここで fetch し、基準レートを更新

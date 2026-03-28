@@ -41,7 +41,7 @@ cp .env.example .env
 | BATCH_FULL_RUN | - | **true** のときチェックポイントを無視し先頭から実行 |
 | BATCH_MODE | - | `full`（全取得）または `diff`（差分）。デフォルト: full |
 | USD_JPY_RATE | - | USD→JPY **基準**レート（デフォルト: **150**） |
-| USD_JPY_SAVE_MULTIPLIER | - | 円換算保存時に基準へ掛ける係数（デフォルト: **1.5** → 実効 150×1.5=225） |
+| USD_JPY_SAVE_MULTIPLIER | - | 円換算保存時に基準へ掛ける係数（デフォルト: **2.19** → 実効 150×2.19=328.5） |
 | API_MAX_RETRIES | - | API 失敗時のリトライ回数。デフォルト 3、0 で無効 |
 | API_RETRY_DELAY_MS | - | リトライ初回待機ミリ秒（指数バックオフ）。デフォルト 5000 |
 
